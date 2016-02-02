@@ -16,13 +16,29 @@ import (
 )
 
 var listenPort string
+type BeforeShutdownFn func()
+var BeforeShutdownCB map[string]BeforeShutdownFn
 
 // add -p flag to the list of flags supported by the app,
 // and allow it to over-ride default listener port in config/app
+
 func init() {
   flag.StringVar(&listenPort,"p","","listener port")
+  BeforeShutdownCB = make(map[string]BeforeShutdownFn, 0)
 }
-
+func RegisterShutdownCallback(pkg string, fn BeforeShutdownFn){
+	if _, ok := BeforeShutdownCB[pkg]; !ok{
+		BeforeShutdownCB[pkg] = fn
+	}else{
+		log.Println("shutdown function already registered for package: ", pkg)
+	}
+}
+func onServerShutdown(){
+	for pkg, fn := range BeforeShutdownCB{
+		log.Println("calling shutdwon function for package: ", pkg)
+		fn()
+	}
+}
 // start serving on hport. If running via socketmaster, the hport argument is
 // ignored. Also, if a port was specified via -p, it takes precedence on hport
 func Serve(hport string, handler http.Handler) error {
@@ -60,7 +76,7 @@ func Serve(hport string, handler http.Handler) error {
 			Handler: handler,
 		},
 	}
-
+	srv.BeforeShutdown = onServerShutdown
 	log.Println("starting serve on ", hport)
 	return srv.Serve(l)
 }
